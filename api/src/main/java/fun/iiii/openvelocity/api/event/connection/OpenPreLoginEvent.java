@@ -23,6 +23,7 @@ import net.kyori.adventure.text.Component;
 public final class OpenPreLoginEvent implements ResultedEvent<ResultedEvent.ComponentResult> {
   private final UUID uuid;
   private final String userName;
+  private final String host;
 
   private boolean online = true;
   private String serverId;
@@ -31,9 +32,15 @@ public final class OpenPreLoginEvent implements ResultedEvent<ResultedEvent.Comp
   private Component disconnectComponent = Component.text("未知错误");
   private GameProfile gameProfile;
 
-  public OpenPreLoginEvent(UUID uuid, String userName) {
+  @SuppressWarnings("checkstyle:MissingJavadocMethod")
+  public OpenPreLoginEvent(UUID uuid, String userName, String host) {
     this.uuid = uuid;
     this.userName = userName;
+    this.host = host;
+  }
+
+  public String getHost() {
+    return host;
   }
 
   public UUID getUuid() {
