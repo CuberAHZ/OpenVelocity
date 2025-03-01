@@ -17,11 +17,13 @@
 
 package com.velocitypowered.proxy.connection.backend;
 
+import com.google.common.primitives.Longs;
 import com.velocitypowered.api.event.player.CookieRequestEvent;
 import com.velocitypowered.api.event.player.ServerLoginPluginMessageEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerEnteredConfigurationEvent;
 import com.velocitypowered.api.network.ProtocolVersion;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
+import com.velocitypowered.api.util.GameProfile;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.config.PlayerInfoForwarding;
 import com.velocitypowered.proxy.config.VelocityConfiguration;
@@ -37,16 +39,24 @@ import com.velocitypowered.proxy.protocol.packet.ClientboundCookieRequestPacket;
 import com.velocitypowered.proxy.protocol.packet.ClientboundStoreCookiePacket;
 import com.velocitypowered.proxy.protocol.packet.DisconnectPacket;
 import com.velocitypowered.proxy.protocol.packet.EncryptionRequestPacket;
+import com.velocitypowered.proxy.protocol.packet.EncryptionResponsePacket;
 import com.velocitypowered.proxy.protocol.packet.LoginAcknowledgedPacket;
 import com.velocitypowered.proxy.protocol.packet.LoginPluginMessagePacket;
 import com.velocitypowered.proxy.protocol.packet.LoginPluginResponsePacket;
 import com.velocitypowered.proxy.protocol.packet.ServerLoginSuccessPacket;
 import com.velocitypowered.proxy.protocol.packet.SetCompressionPacket;
 import com.velocitypowered.proxy.util.except.QuietRuntimeException;
+import fun.iiii.openvelocity.OpenVelocity;
+import fun.iiii.openvelocity.api.event.connection.BackendEncryptRequestEvent;
+import fun.iiii.openvelocity.util.CryptUtil;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import java.math.BigInteger;
+import java.security.GeneralSecurityException;
+import java.security.PublicKey;
 import java.util.concurrent.CompletableFuture;
+import javax.crypto.SecretKey;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import org.apache.logging.log4j.LogManager;
@@ -68,7 +78,7 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
   private boolean informationForwarded;
 
   LoginSessionHandler(VelocityServer server, VelocityServerConnection serverConn,
-      CompletableFuture<Impl> resultFuture) {
+                      CompletableFuture<Impl> resultFuture) {
     this.server = server;
     this.serverConn = serverConn;
     this.resultFuture = resultFuture;
@@ -76,14 +86,56 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(EncryptionRequestPacket packet) {
-    throw new IllegalStateException("Backend server is online-mode!");
+    final SecretKey secretkey = CryptUtil.createNewSharedKey();
+    byte[] sharedSecret = secretkey.getEncoded();
+    PublicKey publickey = CryptUtil.decodePublicKey(packet.getPublicKey());
+    String s = "";
+    String serverId = (new BigInteger(CryptUtil.getServerIdHash(s, publickey, secretkey))).toString(16);
+
+    String serverName = serverConn.getServerInfo().getName();
+    GameProfile gameProfile = serverConn.getPlayer().getGameProfile();
+
+    BackendEncryptRequestEvent backendEncryptRequestEvent = new BackendEncryptRequestEvent(serverName, serverId, gameProfile);
+
+    server.getEventManager().fire(backendEncryptRequestEvent).thenRunAsync(
+        () -> {
+          if (!serverConn.isActive()) {
+            //断链了
+            return;
+          }
+
+          Throwable throwable = backendEncryptRequestEvent.getThrowable();
+
+          if (throwable != null) {
+            logger.error("无法为后端服务器处理加密请求", throwable);
+            serverConn.ensureConnected().close(true);
+            return;
+          }
+
+          byte[] verifyToken = CryptUtil.encryptData(publickey, packet.getVerifyToken());
+
+          long salt = Longs.fromByteArray(CryptUtil.encryptData(publickey, Longs.toByteArray(System.currentTimeMillis())));
+          EncryptionResponsePacket responsePacket = new EncryptionResponsePacket(CryptUtil.encryptData(publickey, sharedSecret), verifyToken, salt);
+          serverConn.ensureConnected().write(responsePacket);
+          try {
+            serverConn.ensureConnected().enableEncryption(sharedSecret);
+          } catch (GeneralSecurityException e) {
+            logger.error("无法为后端服务器开启加密", e);
+            // At this point, the connection is encrypted, but something's wrong on our side and
+            // we can't do anything about it.
+            serverConn.ensureConnected().close(true);
+          }
+        }, serverConn.ensureConnected().eventLoop()
+    );
+
+    return true;
   }
 
   @Override
   public boolean handle(LoginPluginMessagePacket packet) {
     MinecraftConnection mc = serverConn.ensureConnected();
     VelocityConfiguration configuration = server.getConfiguration();
-    if (configuration.getPlayerInfoForwardingMode() == PlayerInfoForwarding.MODERN
+    if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName()) == PlayerInfoForwarding.MODERN
         && packet.getChannel().equals(PlayerDataForwarding.CHANNEL)) {
 
       int requestedForwardingVersion = PlayerDataForwarding.MODERN_DEFAULT;
@@ -101,7 +153,7 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
           requestedForwardingVersion);
 
       LoginPluginResponsePacket response = new LoginPluginResponsePacket(
-              packet.getId(), true, forwardingData);
+          packet.getId(), true, forwardingData);
       mc.write(response);
       informationForwarded = true;
     } else {
@@ -143,7 +195,7 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(ServerLoginSuccessPacket packet) {
-    if (server.getConfiguration().getPlayerInfoForwardingMode() == PlayerInfoForwarding.MODERN && !informationForwarded) {
+    if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName()) == PlayerInfoForwarding.MODERN && !informationForwarded) {
       resultFuture.complete(ConnectionRequestResults.forDisconnect(MODERN_IP_FORWARDING_FAILURE, serverConn.getServer()));
       serverConn.disconnect();
       return true;
@@ -202,9 +254,9 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
 
   @Override
   public void disconnected() {
-    if (server.getConfiguration().getPlayerInfoForwardingMode() == PlayerInfoForwarding.LEGACY) {
+    if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName()) == PlayerInfoForwarding.LEGACY) {
       resultFuture.completeExceptionally(new QuietRuntimeException(
-              """
+          """
               The connection to the remote server was unexpectedly closed.
               This is usually because the remote server does not have \
               BungeeCord IP forwarding correctly enabled.

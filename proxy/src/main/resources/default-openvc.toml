@@ -1,0 +1,5 @@
+#设定不同服务器的转发模式
+[server-forwarding-mode]
+login = "modern"
+vc = "none"
+
