@@ -100,6 +100,7 @@ tasks {
     runShadow {
         workingDir = file("run").also(File::mkdirs)
         standardInput = System.`in`
+        jvmArgs("-Dvelocity.packet-decode-logging=true")
     }
     named<JavaExec>("run") {
         workingDir = file("run").also(File::mkdirs)
@@ -121,6 +122,9 @@ dependencies {
     implementation(libs.netty.transport.native.epoll)
     implementation(variantOf(libs.netty.transport.native.epoll) { classifier("linux-x86_64") })
     implementation(variantOf(libs.netty.transport.native.epoll) { classifier("linux-aarch_64") })
+    implementation(libs.netty.transport.native.iouring)
+    implementation(variantOf(libs.netty.transport.native.iouring) { classifier("linux-x86_64") })
+    implementation(variantOf(libs.netty.transport.native.iouring) { classifier("linux-aarch_64") })
     implementation(libs.netty.transport.native.kqueue)
     implementation(variantOf(libs.netty.transport.native.kqueue) { classifier("osx-x86_64") })
     implementation(variantOf(libs.netty.transport.native.kqueue) { classifier("osx-aarch_64") })

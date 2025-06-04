@@ -76,11 +76,13 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -104,7 +106,7 @@ import net.kyori.adventure.audience.ForwardingAudience;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.translation.GlobalTranslator;
-import net.kyori.adventure.translation.TranslationRegistry;
+import net.kyori.adventure.translation.TranslationStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bstats.MetricsBase;
@@ -163,7 +165,9 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   private final Map<UUID, ConnectedPlayer> connectionsByUuid = new ConcurrentHashMap<>();
   private final Map<String, ConnectedPlayer> connectionsByName = new ConcurrentHashMap<>();
   private final VelocityConsole console;
-  private @MonotonicNonNull Ratelimiter ipAttemptLimiter;
+  private @MonotonicNonNull Ratelimiter<InetAddress> ipAttemptLimiter;
+  private @MonotonicNonNull Ratelimiter<UUID> commandRateLimiter;
+  private @MonotonicNonNull Ratelimiter<UUID> tabCompleteRateLimiter;
   private final VelocityEventManager eventManager;
   private final VelocityScheduler scheduler;
   private final VelocityChannelRegistrar channelRegistrar = new VelocityChannelRegistrar();
@@ -298,6 +302,8 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
     }
 
     ipAttemptLimiter = Ratelimiters.createWithMilliseconds(configuration.getLoginRatelimit());
+    commandRateLimiter = Ratelimiters.createWithMilliseconds(configuration.getCommandRatelimit());
+    tabCompleteRateLimiter = Ratelimiters.createWithMilliseconds(configuration.getTabCompleteRatelimit());
     loadPlugins();
 
     // Go ahead and fire the proxy initialization event. We block since plugins should have a chance
@@ -337,8 +343,8 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   }
 
   private void registerTranslations() {
-    final TranslationRegistry translationRegistry = TranslationRegistry
-        .create(Key.key("velocity", "translations"));
+    final TranslationStore.StringBased<MessageFormat> translationRegistry =
+            TranslationStore.messageFormat(Key.key("velocity", "translations"));
     translationRegistry.defaultLocale(Locale.US);
     try {
       ResourceUtils.visitResources(VelocityServer.class, path -> {
@@ -659,8 +665,16 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
     return cm.createHttpClient();
   }
 
-  public Ratelimiter getIpAttemptLimiter() {
+  public @MonotonicNonNull Ratelimiter<InetAddress> getIpAttemptLimiter() {
     return ipAttemptLimiter;
+  }
+
+  public @MonotonicNonNull Ratelimiter<UUID> getCommandRateLimiter() {
+    return commandRateLimiter;
+  }
+
+  public @MonotonicNonNull Ratelimiter<UUID> getTabCompleteRateLimiter() {
+    return tabCompleteRateLimiter;
   }
 
   /**
