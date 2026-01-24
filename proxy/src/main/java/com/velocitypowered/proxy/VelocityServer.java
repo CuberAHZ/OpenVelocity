@@ -175,7 +175,6 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   private final VelocityScheduler scheduler;
   private final VelocityChannelRegistrar channelRegistrar = new VelocityChannelRegistrar();
   private final ServerListPingHandler serverListPingHandler;
-
   private final OpenVelocity openVelocity = new OpenVelocity(this);
 
   VelocityServer(final ProxyOptions options) {

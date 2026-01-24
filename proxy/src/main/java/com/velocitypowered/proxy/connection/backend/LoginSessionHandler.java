@@ -36,7 +36,6 @@ import com.velocitypowered.proxy.connection.util.ConnectionRequestResults;
 import com.velocitypowered.proxy.connection.util.ConnectionRequestResults.Impl;
 import com.velocitypowered.proxy.protocol.StateRegistry;
 import com.velocitypowered.proxy.protocol.packet.ClientboundCookieRequestPacket;
-import com.velocitypowered.proxy.protocol.packet.ClientboundStoreCookiePacket;
 import com.velocitypowered.proxy.protocol.packet.DisconnectPacket;
 import com.velocitypowered.proxy.protocol.packet.EncryptionRequestPacket;
 import com.velocitypowered.proxy.protocol.packet.EncryptionResponsePacket;
@@ -69,74 +68,27 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
 
   private static final Logger logger = LogManager.getLogger(LoginSessionHandler.class);
 
-  private static final Component MODERN_IP_FORWARDING_FAILURE =
-      Component.translatable("velocity.error.modern-forwarding-failed");
+  private static final Component MODERN_IP_FORWARDING_FAILURE = Component.translatable("velocity.error.modern-forwarding-failed");
 
   private final VelocityServer server;
   private final VelocityServerConnection serverConn;
   private final CompletableFuture<Impl> resultFuture;
   private boolean informationForwarded;
 
-  LoginSessionHandler(VelocityServer server, VelocityServerConnection serverConn,
-                      CompletableFuture<Impl> resultFuture) {
+  LoginSessionHandler(VelocityServer server, VelocityServerConnection serverConn, CompletableFuture<Impl> resultFuture) {
     this.server = server;
     this.serverConn = serverConn;
     this.resultFuture = resultFuture;
   }
 
-  @Override
-  public boolean handle(EncryptionRequestPacket packet) {
-    final SecretKey secretkey = CryptUtil.createNewSharedKey();
-    byte[] sharedSecret = secretkey.getEncoded();
-    PublicKey publickey = CryptUtil.decodePublicKey(packet.getPublicKey());
-    String s = "";
-    String serverId = (new BigInteger(CryptUtil.getServerIdHash(s, publickey, secretkey))).toString(16);
-
-    String serverName = serverConn.getServerInfo().getName();
-    GameProfile gameProfile = serverConn.getPlayer().getGameProfile();
-
-    BackendEncryptRequestEvent backendEncryptRequestEvent = new BackendEncryptRequestEvent(serverName, serverId, gameProfile);
-
-    server.getEventManager().fire(backendEncryptRequestEvent).thenRunAsync(
-        () -> {
-          if (!serverConn.isActive()) {
-            //断链了
-            return;
-          }
-
-          Throwable throwable = backendEncryptRequestEvent.getThrowable();
-
-          if (throwable != null) {
-            logger.error("无法为后端服务器处理加密请求", throwable);
-            serverConn.ensureConnected().close(true);
-            return;
-          }
-
-          byte[] verifyToken = CryptUtil.encryptData(publickey, packet.getVerifyToken());
-
-          long salt = Longs.fromByteArray(CryptUtil.encryptData(publickey, Longs.toByteArray(System.currentTimeMillis())));
-          EncryptionResponsePacket responsePacket = new EncryptionResponsePacket(CryptUtil.encryptData(publickey, sharedSecret), verifyToken, salt);
-          serverConn.ensureConnected().write(responsePacket);
-          try {
-            serverConn.ensureConnected().enableEncryption(sharedSecret);
-          } catch (GeneralSecurityException e) {
-            logger.error("无法为后端服务器开启加密", e);
-            // At this point, the connection is encrypted, but something's wrong on our side and
-            // we can't do anything about it.
-            serverConn.ensureConnected().close(true);
-          }
-        }, serverConn.ensureConnected().eventLoop()
-    );
-
-    return true;
-  }
 
   @Override
   public boolean handle(LoginPluginMessagePacket packet) {
     MinecraftConnection mc = serverConn.ensureConnected();
     VelocityConfiguration configuration = server.getConfiguration();
-    if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName()) == PlayerInfoForwarding.MODERN
-        && packet.getChannel().equals(PlayerDataForwarding.CHANNEL)) {
+
+    if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName())
+            == PlayerInfoForwarding.MODERN && packet.getChannel().equals(PlayerDataForwarding.CHANNEL)) {
 
       int requestedForwardingVersion = PlayerDataForwarding.MODERN_DEFAULT;
       // Check version
@@ -144,16 +96,11 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
         requestedForwardingVersion = packet.content().readByte();
       }
       ConnectedPlayer player = serverConn.getPlayer();
-      ByteBuf forwardingData = PlayerDataForwarding.createForwardingData(
-          configuration.getForwardingSecret(),
-          serverConn.getPlayerRemoteAddressAsString(),
-          player.getProtocolVersion(),
-          player.getGameProfile(),
-          player.getIdentifiedKey(),
-          requestedForwardingVersion);
+      ByteBuf forwardingData = PlayerDataForwarding.createForwardingData(configuration.getForwardingSecret(),
+              serverConn.getPlayerRemoteAddressAsString(), player.getProtocolVersion(), player.getGameProfile(),
+              player.getIdentifiedKey(), requestedForwardingVersion);
 
-      LoginPluginResponsePacket response = new LoginPluginResponsePacket(
-          packet.getId(), true, forwardingData);
+      LoginPluginResponsePacket response = new LoginPluginResponsePacket(packet.getId(), true, forwardingData);
       mc.write(response);
       informationForwarded = true;
     } else {
@@ -164,18 +111,15 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
       }
 
       final byte[] contents = ByteBufUtil.getBytes(packet.content());
-      final MinecraftChannelIdentifier identifier = MinecraftChannelIdentifier
-          .from(packet.getChannel());
-      this.server.getEventManager().fire(new ServerLoginPluginMessageEvent(serverConn, identifier,
-              contents, packet.getId()))
-          .thenAcceptAsync(event -> {
-            if (event.getResult().isAllowed()) {
-              mc.write(new LoginPluginResponsePacket(packet.getId(), true, Unpooled
-                  .wrappedBuffer(event.getResult().getResponse())));
-            } else {
-              mc.write(new LoginPluginResponsePacket(packet.getId(), false, Unpooled.EMPTY_BUFFER));
-            }
-          }, mc.eventLoop());
+      final MinecraftChannelIdentifier identifier = MinecraftChannelIdentifier.from(packet.getChannel());
+      this.server.getEventManager().fire(new ServerLoginPluginMessageEvent(serverConn, identifier, contents,
+              packet.getId())).thenAcceptAsync(event -> {
+                if (event.getResult().isAllowed()) {
+                  mc.write(new LoginPluginResponsePacket(packet.getId(), true, Unpooled.wrappedBuffer(event.getResult().getResponse())));
+                } else {
+                  mc.write(new LoginPluginResponsePacket(packet.getId(), false, Unpooled.EMPTY_BUFFER));
+                }
+              }, mc.eventLoop());
     }
     return true;
   }
@@ -228,21 +172,60 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
   }
 
   @Override
-  public boolean handle(ClientboundStoreCookiePacket packet) {
-    throw new IllegalStateException("Can only store cookie in CONFIGURATION or PLAY protocol");
+  public boolean handle(EncryptionRequestPacket packet) {
+
+    final SecretKey secretkey = CryptUtil.createNewSharedKey();
+    byte[] sharedSecret = secretkey.getEncoded();
+
+    PublicKey publickey = CryptUtil.decodePublicKey(packet.getPublicKey());
+    String s = "";
+    String serverId = (new BigInteger(CryptUtil.getServerIdHash(s, publickey, secretkey))).toString(16);
+
+    String serverName = serverConn.getServerInfo().getName();
+    GameProfile gameProfile = serverConn.getPlayer().getGameProfile();
+
+
+    BackendEncryptRequestEvent backendEncryptRequestEvent = new BackendEncryptRequestEvent(serverName, serverId, gameProfile);
+    server.getEventManager().fire(backendEncryptRequestEvent).thenRunAsync(() -> {
+      if (!serverConn.isActive()) {
+        //断链了
+        return;
+      }
+
+      Throwable throwable = backendEncryptRequestEvent.getThrowable();
+
+      if (throwable != null) {
+        logger.error("无法为后端服务器处理加密请求", throwable);
+        serverConn.ensureConnected().close(true);
+        return;
+      }
+      byte[] verifyToken = CryptUtil.encryptData(publickey, packet.getVerifyToken());
+
+      long salt = Longs.fromByteArray(CryptUtil.encryptData(publickey, Longs.toByteArray(System.currentTimeMillis())));
+      EncryptionResponsePacket responsePacket = new EncryptionResponsePacket(CryptUtil.encryptData(publickey, sharedSecret), verifyToken, salt);
+      serverConn.ensureConnected().write(responsePacket);
+      try {
+        serverConn.ensureConnected().enableEncryption(sharedSecret);
+      } catch (GeneralSecurityException e) {
+        logger.error("无法为后端服务器开启加密", e);
+        // At this point, the connection is encrypted, but something's wrong on our side and
+        // we can't do anything about it.
+        serverConn.ensureConnected().close(true);
+      }
+    }, serverConn.ensureConnected().eventLoop());
+
+    return true;
   }
 
   @Override
   public boolean handle(ClientboundCookieRequestPacket packet) {
-    server.getEventManager().fire(new CookieRequestEvent(serverConn.getPlayer(), packet.getKey()))
-        .thenAcceptAsync(event -> {
-          if (event.getResult().isAllowed()) {
-            final Key resultedKey = event.getResult().getKey() == null
-                ? event.getOriginalKey() : event.getResult().getKey();
+    server.getEventManager().fire(new CookieRequestEvent(serverConn.getPlayer(), packet.getKey())).thenAcceptAsync(event -> {
+      if (event.getResult().isAllowed()) {
+        final Key resultedKey = event.getResult().getKey() == null ? event.getOriginalKey() : event.getResult().getKey();
 
-            serverConn.getPlayer().getConnection().write(new ClientboundCookieRequestPacket(resultedKey));
-          }
-        }, serverConn.ensureConnected().eventLoop());
+        serverConn.getPlayer().getConnection().write(new ClientboundCookieRequestPacket(resultedKey));
+      }
+    }, serverConn.ensureConnected().eventLoop());
 
     return true;
   }
@@ -255,17 +238,14 @@ public class LoginSessionHandler implements MinecraftSessionHandler {
   @Override
   public void disconnected() {
     if (OpenVelocity.getInstance().getForwardingMode(serverConn.getServerInfo().getName()) == PlayerInfoForwarding.LEGACY) {
-      resultFuture.completeExceptionally(new QuietRuntimeException(
-          """
+      resultFuture.completeExceptionally(new QuietRuntimeException("""
               The connection to the remote server was unexpectedly closed.
               This is usually because the remote server does not have \
               BungeeCord IP forwarding correctly enabled.
               See https://docs.papermc.io/velocity/player-information-forwarding for instructions \
               on how to configure player info forwarding correctly."""));
     } else {
-      resultFuture.completeExceptionally(
-          new QuietRuntimeException("The connection to the remote server was unexpectedly closed.")
-      );
+      resultFuture.completeExceptionally(new QuietRuntimeException("The connection to the remote server was unexpectedly closed."));
     }
   }
 }

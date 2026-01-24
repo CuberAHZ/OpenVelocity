@@ -80,7 +80,7 @@ public class InitialLoginSessionHandler implements MinecraftSessionHandler {
     this.mcConnection = Preconditions.checkNotNull(mcConnection, "mcConnection");
     this.inbound = Preconditions.checkNotNull(inbound, "inbound");
     this.forceKeyAuthentication = VelocityProperties.readBoolean(
-        "auth.forceSecureProfiles", server.getConfiguration().isForceKeyAuthentication());
+            "auth.forceSecureProfiles", server.getConfiguration().isForceKeyAuthentication());
   }
 
   @Override
@@ -156,8 +156,6 @@ public class InitialLoginSessionHandler implements MinecraftSessionHandler {
             logger.error("Exception in pre-login stage", ex);
             return null;
           });
-
-
         });
       });
     }, mcConnection.eventLoop()).exceptionally((ex) -> {
@@ -217,58 +215,58 @@ public class InitialLoginSessionHandler implements MinecraftSessionHandler {
     String playerIp = ((InetSocketAddress) mcConnection.getRemoteAddress()).getHostString();
     OnlineAuthEvent onlineAuthEvent = new OnlineAuthEvent(login.getUsername(), serverId, playerIp, online);
     server.getEventManager().fire(onlineAuthEvent).thenRunAsync(
-        () -> {
-          if (mcConnection.isClosed()) {
-            // The player disconnected after we authenticated them.
-            return;
-          }
-
-          Throwable throwable = onlineAuthEvent.getThrowable();
-
-          if (throwable != null) {
-            logger.error("Unable to authenticate player", throwable);
-            inbound.disconnect(onlineAuthEvent.getDisconnectComponent());
-            return;
-          }
-
-          // Go ahead and enable encryption. Once the client sends EncryptionResponse, encryption
-          // is enabled.
-          try {
-            if (online) {
-              mcConnection.enableEncryption(decryptedSharedSecret);
-            }
-          } catch (GeneralSecurityException e) {
-            logger.error("Unable to enable encryption for connection", e);
-            // At this point, the connection is encrypted, but something's wrong on our side and
-            // we can't do anything about it.
-            mcConnection.close(true);
-            return;
-          }
-
-          if (onlineAuthEvent.isSuccess()) {
-            final GameProfile profile = onlineAuthEvent.getGameProfile();
-            // Not so fast, now we verify the public key for 1.19.1+
-            if (!onlineAuthEvent.isIgnoreKey()) {
-              if (inbound.getIdentifiedKey() != null
-                  && inbound.getIdentifiedKey().getKeyRevision() == IdentifiedKey.Revision.LINKED_V2
-                  && inbound.getIdentifiedKey() instanceof final IdentifiedKeyImpl key) {
-                if (!key.internalAddHolder(profile.getId())) {
-                  inbound.disconnect(
-                      Component.translatable("multiplayer.disconnect.invalid_public_key"));
-                }
+            () -> {
+              if (mcConnection.isClosed()) {
+                // The player disconnected after we authenticated them.
+                return;
               }
-            }
-            // All went well, initialize the session.
-            mcConnection.setActiveSessionHandler(StateRegistry.LOGIN,
-                new AuthSessionHandler(server, inbound, profile, online));
-          } else {
-            // Something else went wrong
-            logger.error(
-                "验证失败 {} whilst contacting Mojang to log in {} ({})",
-                onlineAuthEvent.getDisconnectComponent().toString(), login.getUsername(), playerIp);
-            inbound.disconnect(onlineAuthEvent.getDisconnectComponent());
-          }
-        }, mcConnection.eventLoop());
+
+              Throwable throwable = onlineAuthEvent.getThrowable();
+
+              if (throwable != null) {
+                logger.error("Unable to authenticate player", throwable);
+                inbound.disconnect(onlineAuthEvent.getDisconnectComponent());
+                return;
+              }
+
+              // Go ahead and enable encryption. Once the client sends EncryptionResponse, encryption
+              // is enabled.
+              try {
+                if (online) {
+                  mcConnection.enableEncryption(decryptedSharedSecret);
+                }
+              } catch (GeneralSecurityException e) {
+                logger.error("Unable to enable encryption for connection", e);
+                // At this point, the connection is encrypted, but something's wrong on our side and
+                // we can't do anything about it.
+                mcConnection.close(true);
+                return;
+              }
+
+              if (onlineAuthEvent.isSuccess()) {
+                final GameProfile profile = onlineAuthEvent.getGameProfile();
+                // Not so fast, now we verify the public key for 1.19.1+
+                if (!onlineAuthEvent.isIgnoreKey()) {
+                  if (inbound.getIdentifiedKey() != null
+                          && inbound.getIdentifiedKey().getKeyRevision() == IdentifiedKey.Revision.LINKED_V2
+                          && inbound.getIdentifiedKey() instanceof final IdentifiedKeyImpl key) {
+                    if (!key.internalAddHolder(profile.getId())) {
+                      inbound.disconnect(
+                              Component.translatable("multiplayer.disconnect.invalid_public_key"));
+                    }
+                  }
+                }
+                // All went well, initialize the session.
+                mcConnection.setActiveSessionHandler(StateRegistry.LOGIN,
+                        new AuthSessionHandler(server, inbound, profile, online));
+              } else {
+                // Something else went wrong
+                logger.error(
+                        "验证失败 {} whilst contacting Mojang to log in {} ({})",
+                        onlineAuthEvent.getDisconnectComponent().toString(), login.getUsername(), playerIp);
+                inbound.disconnect(onlineAuthEvent.getDisconnectComponent());
+              }
+            }, mcConnection.eventLoop());
   }
 
   private EncryptionRequestPacket generateEncryptionRequest() {
@@ -276,6 +274,7 @@ public class InitialLoginSessionHandler implements MinecraftSessionHandler {
     ThreadLocalRandom.current().nextBytes(verify);
 
     EncryptionRequestPacket request = new EncryptionRequestPacket();
+
     request.setPublicKey(server.getServerKeyPair().getPublic().getEncoded());
     request.setVerifyToken(verify);
     return request;

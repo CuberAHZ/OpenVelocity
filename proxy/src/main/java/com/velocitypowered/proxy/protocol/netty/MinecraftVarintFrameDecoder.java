@@ -125,7 +125,7 @@ public class MinecraftVarintFrameDecoder extends ByteToMessageDecoder {
 
   private boolean validateServerboundHandshakePacket(ByteBuf in, int length) throws Exception {
     StateRegistry.PacketRegistry.ProtocolRegistry registry =
-        state.getProtocolRegistry(direction, ProtocolVersion.MINIMUM_VERSION);
+            state.getProtocolRegistry(direction, ProtocolVersion.MINIMUM_VERSION);
 
     final int index = in.readerIndex();
     try {

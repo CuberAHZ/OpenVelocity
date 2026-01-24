@@ -163,6 +163,7 @@ public class VelocityServerConnection implements MinecraftConnectionAssociation,
 
   private void startHandshake() {
     final MinecraftConnection mc = ensureConnected();
+
     PlayerInfoForwarding forwardingMode = OpenVelocity.getInstance().getForwardingMode(registeredServer.getServerInfo().getName());
 
     // Initiate the handshake.
