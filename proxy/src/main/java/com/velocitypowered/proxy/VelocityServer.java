@@ -83,7 +83,6 @@ import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -106,8 +105,8 @@ import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.audience.ForwardingAudience;
 import net.kyori.adventure.key.Key;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.translation.MiniMessageTranslationStore;
 import net.kyori.adventure.translation.GlobalTranslator;
-import net.kyori.adventure.translation.TranslationStore;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.bstats.MetricsBase;
@@ -346,8 +345,8 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   }
 
   private void registerTranslations() {
-    final TranslationStore.StringBased<MessageFormat> translationRegistry =
-            TranslationStore.messageFormat(Key.key("velocity", "translations"));
+    final MiniMessageTranslationStore translationRegistry =
+            MiniMessageTranslationStore.create(Key.key("velocity", "translations"));
     translationRegistry.defaultLocale(Locale.US);
     try {
       ResourceUtils.visitResources(VelocityServer.class, path -> {
@@ -839,7 +838,7 @@ public class VelocityServer implements ProxyServer, ForwardingAudience {
   public VelocityChannelRegistrar getChannelRegistrar() {
     return channelRegistrar;
   }
-  
+
   @Override
   public boolean isShuttingDown() {
     return shutdownInProgress.get();

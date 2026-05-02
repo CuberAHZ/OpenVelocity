@@ -21,10 +21,10 @@ package com.velocitypowered.proxy.connection;
  * Various useful constants.
  */
 public class VelocityConstants {
+
   private VelocityConstants() {
     throw new AssertionError();
   }
 
   public static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
-  public static final int MODERN_FORWARDING_VERSION = 4;
 }

@@ -46,7 +46,6 @@ import com.velocitypowered.proxy.protocol.packet.PluginMessagePacket;
 import com.velocitypowered.proxy.protocol.packet.ServerLoginPacket;
 import com.velocitypowered.proxy.protocol.util.ByteBufDataOutput;
 import com.velocitypowered.proxy.server.VelocityRegisteredServer;
-import fun.iiii.openvelocity.OpenVelocity;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -163,8 +162,7 @@ public class VelocityServerConnection implements MinecraftConnectionAssociation,
 
   private void startHandshake() {
     final MinecraftConnection mc = ensureConnected();
-
-    PlayerInfoForwarding forwardingMode = OpenVelocity.getInstance().getForwardingMode(registeredServer.getServerInfo().getName());
+    PlayerInfoForwarding forwardingMode = server.getConfiguration().getPlayerInfoForwardingMode();
 
     // Initiate the handshake.
     ProtocolVersion protocolVersion = proxyPlayer.getConnection().getProtocolVersion();
@@ -182,9 +180,8 @@ public class VelocityServerConnection implements MinecraftConnectionAssociation,
       handshake.setServerAddress(createBungeeGuardForwardingAddress(secret));
     } else if (proxyPlayer.getConnection().getType() == ConnectionTypes.LEGACY_FORGE) {
       handshake.setServerAddress(playerVhost + HANDSHAKE_HOSTNAME_TOKEN);
-    } else if (proxyPlayer.getConnection().getType() instanceof ModernForgeConnectionType) {
-      handshake.setServerAddress(playerVhost + ((ModernForgeConnectionType) proxyPlayer
-              .getConnection().getType()).getModernToken());
+    } else if (proxyPlayer.getConnection().getType() instanceof ModernForgeConnectionType forgeConnection) {
+      handshake.setServerAddress(playerVhost + forgeConnection.getModernToken());
     } else {
       handshake.setServerAddress(playerVhost);
     }

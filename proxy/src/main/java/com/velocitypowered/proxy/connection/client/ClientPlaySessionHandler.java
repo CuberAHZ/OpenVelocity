@@ -41,6 +41,7 @@ import com.velocitypowered.proxy.connection.forge.legacy.LegacyForgeConstants;
 import com.velocitypowered.proxy.connection.player.resourcepack.ResourcePackResponseBundle;
 import com.velocitypowered.proxy.protocol.MinecraftPacket;
 import com.velocitypowered.proxy.protocol.StateRegistry;
+import com.velocitypowered.proxy.protocol.netty.MinecraftDecoder;
 import com.velocitypowered.proxy.protocol.packet.BossBarPacket;
 import com.velocitypowered.proxy.protocol.packet.ClientSettingsPacket;
 import com.velocitypowered.proxy.protocol.packet.JoinGamePacket;
@@ -98,6 +99,8 @@ import org.checkerframework.checker.nullness.qual.Nullable;
  * center that joins backend servers with players.
  */
 public class ClientPlaySessionHandler implements MinecraftSessionHandler {
+  private static final boolean BACKPRESSURE_LOG =
+      Boolean.getBoolean("velocity.log-server-backpressure");
 
   private static final Logger logger = LogManager.getLogger(ClientPlaySessionHandler.class);
 
@@ -468,7 +471,11 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     }
 
     MinecraftConnection smc = serverConnection.getConnection();
-    if (smc != null && serverConnection.getPhase().consideredComplete()) {
+    final boolean stateAllowsForward = smc != null
+        && !smc.isClosed()
+        && serverConnection.getPhase().consideredComplete()
+        && smc.getState() == StateRegistry.PLAY;
+    if (stateAllowsForward) {
       if (packet instanceof PluginMessagePacket) {
         ((PluginMessagePacket) packet).retain();
       }
@@ -485,7 +492,11 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     }
 
     MinecraftConnection smc = serverConnection.getConnection();
-    if (smc != null && !smc.isClosed() && serverConnection.getPhase().consideredComplete()) {
+    final boolean stateAllowsForward = smc != null
+        && !smc.isClosed()
+        && serverConnection.getPhase().consideredComplete()
+        && smc.getState() == StateRegistry.PLAY;
+    if (stateAllowsForward) {
       smc.write(buf.retain());
     }
   }
@@ -497,13 +508,23 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   @Override
   public void exception(Throwable throwable) {
-    player.disconnect(
-        Component.translatable("velocity.error.player-connection-error", NamedTextColor.RED));
+    player.disconnect(Component.translatable("velocity.error.player-connection-error", NamedTextColor.RED));
+    if (MinecraftDecoder.DEBUG) {
+      logger.info("Exception while handling packet for {}", player, throwable);
+    }
   }
 
   @Override
   public void writabilityChanged() {
     boolean writable = player.getConnection().getChannel().isWritable();
+
+    if (BACKPRESSURE_LOG) {
+      if (writable) {
+        logger.info("{} is writable, will auto-read backend connection data", player);
+      } else {
+        logger.info("{} is not writable, not auto-reading backend connection data", player);
+      }
+    }
 
     if (!writable) {
       // We might have packets queued from the server, so flush them now to free up memory. Make

@@ -12,7 +12,6 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import java.util.List;
 
-
 /**
  * This event is fired when a client ({@link Player}) sends a plugin message through the
  * unregister channel. Velocity will not wait on this event to finish firing.

@@ -256,9 +256,10 @@ public class InitialLoginSessionHandler implements MinecraftSessionHandler {
                     }
                   }
                 }
+                String serverIdHash = serverId != null ? serverId : "";
                 // All went well, initialize the session.
                 mcConnection.setActiveSessionHandler(StateRegistry.LOGIN,
-                        new AuthSessionHandler(server, inbound, profile, online));
+                        new AuthSessionHandler(server, inbound, profile, online, serverIdHash));
               } else {
                 // Something else went wrong
                 logger.error(
